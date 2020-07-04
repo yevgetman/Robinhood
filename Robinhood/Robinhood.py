@@ -52,6 +52,15 @@ class Robinhood:
 
     client_id = "c82SH0WZOsabOXGP2sxqcj34FxkvfnWRZBKlBjFS"
 
+    crypto_pairs = {
+        'BTCUSD': '3d961844-d360-45fc-989b-f6fca761d511',
+        'ETHUSD': '76637d50-c702-4ed1-bcb5-5b0732a81f48',
+        'ETCUSD': '7b577ce3-489d-4269-9408-796a0d1abb3a',
+        'BCHUSD': '2f2b77c4-e426-4271-ae49-18d5cb296d3a',
+        'BSVUSD': '086a8f9f-6c39-43fa-ac9f-57952f4a1ba6',
+        'LTCUSD': '383280b1-ff53-43fc-9c84-f01afd0989cd',
+        'DOGEUSD': '1ef78e1b-049b-4f12-90e5-555dcf2fe204'
+    }
 
     ###########################################################################
     #                       Logging in and initializing
@@ -275,6 +284,17 @@ class Robinhood:
     ###########################################################################
     #                               GET DATA
     ###########################################################################
+
+    def send_request(self,url):
+
+        """  """
+        try:
+            req = self.session.get(url, headers=self.headers, timeout=15)
+            req.raise_for_status()
+            return req.json()
+        except requests.exceptions.HTTPError:
+            raise RH_exception.InvalidRequest()
+
 
     def investment_profile(self):
         """Fetch investment_profile """
@@ -757,6 +777,68 @@ class Robinhood:
                 (:object: `dict`): Non-zero positions
         """
         return self.session.get(endpoints.watchlists() + 'Default/', timeout=15).json()
+
+
+    ###########################################################################
+    #                           GET CRYPTOCURRENCY INFO
+    ###########################################################################
+
+    def get_pairs(self):
+
+        url = endpoints.currency_pairs()
+
+        return self.send_request(url)
+
+    def quote_crypto(self, pair='BTCUSD'):
+
+        symbol = self.crypto_pairs[pair]
+        url = endpoints.quotes_crypto(symbol)
+
+        return self.send_request(url)
+
+
+    def historicals_crypto(self, pair='BTCUSD', interval='5minute', span='day',  bounds='24_7'):
+        
+        symbol = self.crypto_pairs[pair]
+        url = endpoints.historicals_crypto(symbol, interval, span, bounds)
+
+        return self.send_request(url)
+
+
+    def orders_crypto(self):
+
+        url = endpoints.orders_crypto();
+
+        return self.send_request(url)
+
+
+    def order_status_crypto(self,orderId):
+
+        url = endpoints.order_status_crypto(orderId);
+
+        return self.send_request(url)
+
+
+    def order_cancel_crypto(self,orderId):
+
+        url = endpoints.order_cancel_crypto(orderId);
+
+        return self.send_request(url)
+
+
+    def accounts_crypto(self):
+
+        url = endpoints.accounts_crypto();
+
+        return self.send_request(url)
+
+
+    def holdings_crypto(self):
+
+        url = endpoints.holdings_crypto();
+
+        return self.send_request(url)
+
 
     ###########################################################################
     #                           GET OPTIONS INFO

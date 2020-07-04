@@ -39,3 +39,9 @@ class InvalidInstrumentId(RobinhoodException):
         When an invalid instrument id is given
     """
     pass
+
+class InvalidRequest(RobinhoodException):
+    """
+        A generic request exception
+    """
+    pass
