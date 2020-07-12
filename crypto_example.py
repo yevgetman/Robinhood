@@ -3,12 +3,12 @@ import schedule
 import time
 
 # Create instance of Robinhood class 
-rh = Robinhood(True) # pass crypto flag as True (default False)
+rh = Robinhood(True) # pass crypto flag True (default False)
 
 # Login 
 rh.login(
     username="<your_robinhood_username>",
-    password="<your_robinhood_password", 
+    password="<your_robinhood_password>", 
     qr_code="MFA_QR_code" # optional (MFA handled via SMS if omitted)
 )
 
