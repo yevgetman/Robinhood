@@ -18,6 +18,7 @@ import dateutil
 import time
 import random
 import hmac, base64, struct, hashlib
+import uuid
 
 #Application-specific imports
 from . import exceptions as RH_exception
@@ -52,21 +53,11 @@ class Robinhood:
 
     client_id = "c82SH0WZOsabOXGP2sxqcj34FxkvfnWRZBKlBjFS"
 
-    crypto_pairs = {
-        'BTCUSD': '3d961844-d360-45fc-989b-f6fca761d511',
-        'ETHUSD': '76637d50-c702-4ed1-bcb5-5b0732a81f48',
-        'ETCUSD': '7b577ce3-489d-4269-9408-796a0d1abb3a',
-        'BCHUSD': '2f2b77c4-e426-4271-ae49-18d5cb296d3a',
-        'BSVUSD': '086a8f9f-6c39-43fa-ac9f-57952f4a1ba6',
-        'LTCUSD': '383280b1-ff53-43fc-9c84-f01afd0989cd',
-        'DOGEUSD': '1ef78e1b-049b-4f12-90e5-555dcf2fe204'
-    }
-
     ###########################################################################
     #                       Logging in and initializing
     ###########################################################################
 
-    def __init__(self):
+    def __init__(self, trade_crypto=False):
         self.session = requests.session()
         self.session.proxies = getproxies()
         self.headers = {
@@ -78,10 +69,26 @@ class Robinhood:
             "Connection": "keep-alive",
             "User-Agent": "Robinhood/823 (iPhone; iOS 7.1.2; Scale/2.00)"
         }
+        self.headers_nummus = {
+            "Accept": "application/json",
+            "Accept-Encoding": "gzip, deflate",
+            "Accept-Language": "en;q=1, fr;q=0.9, de;q=0.8, ja;q=0.7, nl;q=0.6, it;q=0.5",
+            "Content-Type": "application/json",
+            "X-Robinhood-API-Version": "1.0.0",
+            "Connection": "keep-alive",
+            "User-Agent": "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_13_2) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/65.0.3325.181 Safari/537.36",
+            "Origin": "https://robinhood.com",
+        }
         self.session.headers = self.headers
         self.device_token = ""
         self.challenge_id = ""
 
+        self.trade_crypto = trade_crypto
+
+        if trade_crypto == True:
+            self.crypto_pairs = {}
+            self.initialize_crypto_pairs()
+            
     def login_required(function):  # pylint: disable=E0213
         """ Decorator function that prompts user for login if they are not logged in already. Can be applied to any function using the @ notation. """
         def wrapper(self, *args, **kwargs):
@@ -285,9 +292,9 @@ class Robinhood:
     #                               GET DATA
     ###########################################################################
 
-    def send_request(self,url):
+    def _GET(self,url):
 
-        """  """
+        """ wrapper for session.get() """
         try:
             req = self.session.get(url, headers=self.headers, timeout=15)
             req.raise_for_status()
@@ -780,65 +787,119 @@ class Robinhood:
 
 
     ###########################################################################
-    #                           GET CRYPTOCURRENCY INFO
+    #                           CRYPTOCURRENCY
     ###########################################################################
 
-    def get_pairs(self):
-
-        url = endpoints.currency_pairs()
-
-        return self.send_request(url)
-
-    def quote_crypto(self, pair='BTCUSD'):
-
-        symbol = self.crypto_pairs[pair]
-        url = endpoints.quotes_crypto(symbol)
-
-        return self.send_request(url)
+    def initialize_crypto_pairs(self):
+        """ Aggregate list of currency pair symbols with their assoicated pair ids. Ids are needed to place trades - caching this list prevents making repeated requests for every trade. """
+        pairs = self._GET(endpoints.currency_pairs())['results']
+        for pair in pairs:
+            self.crypto_pairs[pair['symbol'].split('-USD')[0]] = pair['id']
 
 
-    def historicals_crypto(self, pair='BTCUSD', interval='5minute', span='day',  bounds='24_7'):
+    def quote_crypto(self, symbol='BTC'):
+
+        pair_id = self.crypto_pairs[symbol]
+        url = endpoints.quotes_crypto(pair_id)
+
+        return self._GET(url)
+
+
+    def historicals_crypto(self, symbol='BTC', interval='5minute', span='day', bounds='24_7'):
         
-        symbol = self.crypto_pairs[pair]
-        url = endpoints.historicals_crypto(symbol, interval, span, bounds)
+        pair = self.crypto_pairs[symbol]
+        url = endpoints.historicals_crypto(pair, interval, span, bounds)
 
-        return self.send_request(url)
+        return self._GET(url)
 
 
     def orders_crypto(self):
 
         url = endpoints.orders_crypto();
 
-        return self.send_request(url)
+        return self._GET(url)
 
 
     def order_status_crypto(self,orderId):
 
         url = endpoints.order_status_crypto(orderId);
 
-        return self.send_request(url)
+        return self._GET(url)
 
 
     def order_cancel_crypto(self,orderId):
 
         url = endpoints.order_cancel_crypto(orderId);
 
-        return self.send_request(url)
+        return self._GET(url)
 
 
     def accounts_crypto(self):
 
         url = endpoints.accounts_crypto();
 
-        return self.send_request(url)
+        return self._GET(url)
 
 
     def holdings_crypto(self):
 
         url = endpoints.holdings_crypto();
 
-        return self.send_request(url)
+        return self._GET(url)
 
+
+    def place_order_crypto(self, symbol, **kwargs):
+        ''' Example:
+           'BTC',
+            price=round(float(self.quote_crypto('BTC')['mark_price']) * 1.005, 2), 
+            quantity="0.001",
+            side="buy",
+            time_in_force="gtc",
+            type="market"
+        '''
+        nummus_account = self.accounts_crypto()
+        account_id = nummus_account['results'][0]['id']
+
+        set(kwargs.keys()) == ['price', 'quantity', 'side', 'time_in_force', 'type']
+
+        payload = {
+            **{
+                'account_id': account_id,
+                'currency_pair_id': self.crypto_pairs[symbol],
+                'ref_id': str(uuid.uuid4()),
+            },
+            **kwargs
+        }
+
+        access_token = self.get_access_token_crypto()
+
+        self.headers_nummus['Authorization'] = 'Bearer ' + access_token
+
+        res = self.session.post(endpoints.orders_crypto(), headers=self.headers_nummus, json=payload, timeout=15)
+        res.raise_for_status()
+
+        return res
+
+
+    def get_access_token_crypto(self):
+
+        payload = {
+            'password': self.password,
+            'username': self.username,
+            'grant_type': 'password',
+            'client_id': "c82SH0WZOsabOXGP2sxqcj34FxkvfnWRZBKlBjFS",
+            'scope': 'internal',
+            'device_token': self.device_token,
+            'mfa_code': self.get_mfa_token(self.qr_code)
+        }
+
+        res = self.session.post(endpoints.login(), data=payload, timeout=15)
+
+        data = res.json()
+
+        access_token = data['access_token']
+
+        return access_token
 
     ###########################################################################
     #                           GET OPTIONS INFO
