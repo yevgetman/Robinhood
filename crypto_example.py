@@ -1,6 +1,4 @@
 from Robinhood import Robinhood
-import schedule
-import time
 
 # Create instance of Robinhood class 
 rh = Robinhood(True) # pass crypto flag True (default False)
